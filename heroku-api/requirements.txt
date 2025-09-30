@@ -1,0 +1,33 @@
+# S&P Compliance Bot - Heroku API Dependencies
+# Pinned versions as of 2025-09-29
+# Python 3.12 compatible
+
+# ASGI / Web Server
+fastapi[all]==0.115.2
+granian==1.5.2
+
+# AI - Grok-4-latest (xAI API)
+xai==1.0.3
+
+# RAG System
+sentence-transformers==3.0.1  # CPU-optimized embeddings (thenlper/gte-small)
+redis[hiredis]==5.0.6         # Vector storage + rate limiting
+rank-bm25==0.2.2              # Keyword search fallback
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+alembic==1.13.2
+asyncpg==0.30.0
+
+# Observability & Logging
+structlog==24.4.0
+opentelemetry-distro==0.47b0
+opentelemetry-instrumentation-fastapi==0.47b0
+
+# Utilities
+pydantic==2.10.3
+python-dotenv==1.0.1
+httpx==0.28.0
+
+# PDF Processing (for RAG ingestion)
+pypdf==4.3.1

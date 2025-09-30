@@ -1,0 +1,105 @@
+{
+  "name": "Discord S&P Compliance Bot API",
+  "description": "AI-powered compliance assistant using Grok-4-latest with RAG (FastAPI backend)",
+  "repository": "https://github.com/yourusername/discord-compliance-bot",
+  "logo": "https://avatars.githubusercontent.com/u/your-logo",
+  "keywords": [
+    "discord",
+    "compliance",
+    "ai",
+    "grok-4",
+    "rag",
+    "fastapi",
+    "postgresql",
+    "redis"
+  ],
+  "success_url": "/health/detailed",
+  "env": {
+    "XAI_API_KEY": {
+      "description": "xAI API key for Grok-4-latest (get from x.ai/api)",
+      "required": true
+    },
+    "ADMIN_TOKEN": {
+      "description": "Admin authentication token for admin endpoints",
+      "generator": "secret",
+      "required": true
+    },
+    "ENVIRONMENT": {
+      "description": "Environment (production, staging, development)",
+      "value": "production",
+      "required": true
+    },
+    "LOG_LEVEL": {
+      "description": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+      "value": "INFO",
+      "required": false
+    },
+    "CORS_ORIGINS": {
+      "description": "Allowed CORS origins (comma-separated)",
+      "value": "https://discord.com",
+      "required": false
+    },
+    "EMBED_MODEL": {
+      "description": "Sentence transformer model for embeddings",
+      "value": "thenlper/gte-small",
+      "required": false
+    },
+    "EMBED_DIM": {
+      "description": "Embedding dimension",
+      "value": "384",
+      "required": false
+    },
+    "CHUNK_SIZE": {
+      "description": "Text chunk size for RAG",
+      "value": "512",
+      "required": false
+    },
+    "CHUNK_OVERLAP": {
+      "description": "Text chunk overlap",
+      "value": "50",
+      "required": false
+    },
+    "TOP_K_RAG": {
+      "description": "Number of RAG chunks to retrieve",
+      "value": "5",
+      "required": false
+    },
+    "GROK_TEMP": {
+      "description": "Grok-4 temperature (0.0-1.0)",
+      "value": "0.7",
+      "required": false
+    },
+    "GROK_TIMEOUT": {
+      "description": "Grok-4 API timeout (seconds)",
+      "value": "28",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    },
+    {
+      "plan": "heroku-redis:mini",
+      "as": "REDIS"
+    },
+    {
+      "plan": "papertrail:chokladfabrik",
+      "as": "PAPERTRAIL"
+    }
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "stack": "heroku-24",
+  "image": "heroku/python"
+}

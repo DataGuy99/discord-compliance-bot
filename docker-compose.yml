@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: discord-compliance-api
+    restart: unless-stopped
+    env_file:
+      - heroku-api/.env
+    volumes:
+      - ./heroku-api:/app/heroku-api
+      - /app/heroku-api/__pycache__
+    networks:
+      - bot-network
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    command: granian heroku-api.main:app --interface asgi --host 0.0.0.0 --port 8000
+
+  discord-bot:
+    build: .
+    container_name: discord-compliance-bot
+    restart: unless-stopped
+    env_file:
+      - discord-bot/.env
+    volumes:
+      - ./discord-bot:/app/discord-bot
+      - /app/discord-bot/__pycache__
+    networks:
+      - bot-network
+    depends_on:
+      - api
+    command: python discord-bot/main.py
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: discord-bot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-botuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-discord_bot}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - bot-network
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: discord-bot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - bot-network
+    ports:
+      - "6379:6379"
+
+networks:
+  bot-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

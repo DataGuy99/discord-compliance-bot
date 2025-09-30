@@ -1,0 +1,17 @@
+# Discord Bot Dependencies
+# Python 3.12.7
+
+# Discord library
+discord.py[voice]==2.6.3
+
+# HTTP client for API calls
+httpx==0.28.0
+
+# Logging
+structlog==24.4.0
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Async utilities
+asyncio==3.4.3

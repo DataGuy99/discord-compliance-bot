@@ -1,0 +1,2 @@
+web: granian heroku-api.main:app --interface asgi --workers 2 --loop uvloop --host 0.0.0.0 --port $PORT
+release: alembic upgrade head
