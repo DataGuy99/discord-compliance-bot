@@ -85,6 +85,9 @@ class User(Base):
         Index("idx_user_discord_id", "discord_id"),
         Index("idx_user_guild_id", "guild_id"),
         Index("idx_user_role", "role"),
+        # Composite indexes for common query patterns
+        Index("idx_user_active_last_query", "is_active", "last_query_at"),
+        Index("idx_user_banned_created", "is_banned", "created_at"),
     )
 
 
@@ -143,6 +146,9 @@ class QueryLog(Base):
         Index("idx_query_created_at", "created_at"),
         Index("idx_query_session_id", "session_id"),
         Index("idx_query_flagged", "is_flagged"),
+        # Composite indexes for common query patterns
+        Index("idx_query_user_created", "user_id", "created_at"),
+        Index("idx_query_flagged_confidence", "is_flagged", "confidence_score"),
     )
 
 

@@ -103,7 +103,34 @@ class QueryHistoryResponse(BaseModel):
     has_feedback: bool
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    summary="Process compliance query",
+    description="Submit a compliance question and receive AI-powered response with RAG context from S&P documentation",
+    responses={
+        200: {
+            "description": "Query processed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "answer": "Based on S&P 500 compliance guidelines...",
+                        "confidence": "high",
+                        "confidence_score": 0.92,
+                        "risk": "low",
+                        "sources": [{"document": "SP-500-Guide", "chunk_id": "abc123"}],
+                        "query_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "response_time_ms": 1250
+                    }
+                }
+            }
+        },
+        400: {"description": "Invalid query format"},
+        429: {"description": "Rate limit exceeded (30 req/min or daily limit)"},
+        503: {"description": "AI model unavailable"},
+    },
+    tags=["Compliance Queries"]
+)
 async def process_query(
     request: QueryRequest,
     background_tasks: BackgroundTasks,
@@ -112,12 +139,27 @@ async def process_query(
     """
     Process a compliance query using Grok-4 + RAG.
 
-    Flow:
-    1. Rate limit check
+    **Flow:**
+    1. Rate limit check (30 req/min per user)
     2. Get or create user
-    3. Call Grok-4 with RAG
-    4. Log query and response
-    5. Return answer
+    3. Check daily query limit
+    4. Query deduplication (5-minute cache)
+    5. Call Grok-4 with RAG context
+    6. Log query and response
+    7. Return answer with sources
+
+    **Rate Limits:**
+    - 30 requests per minute per user
+    - 100 requests per day per user (configurable)
+
+    **Response Fields:**
+    - `answer`: Compliance response with citation markers
+    - `confidence`: high/medium/low based on confidence_score
+    - `confidence_score`: 0.0-1.0 numerical confidence
+    - `risk`: Risk level assessment
+    - `sources`: Referenced document chunks for citations
+    - `query_id`: UUID for feedback submission
+    - `response_time_ms`: Query processing time
     """
     start_time = datetime.utcnow()
 

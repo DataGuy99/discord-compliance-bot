@@ -508,6 +508,46 @@ async def trigger_model_retrain(
         raise HTTPException(status_code=500, detail=f"Document ingestion failed: {str(e)}")
 
 
+@router.post("/users/{user_id}/gdpr-deletion-token")
+async def generate_gdpr_deletion_token(
+    user_id: str,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(verify_admin),
+):
+    """
+    Generate a time-limited GDPR deletion confirmation token.
+    This is step 1 of 2-step deletion process for safety.
+    Requires admin token in X-Admin-Token header.
+    """
+    import secrets
+    from datetime import datetime, timedelta
+
+    # Get user
+    user = await session.get(User, UUID(user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate secure random token
+    deletion_token = secrets.token_urlsafe(32)
+
+    # Store token in Redis with 15-minute expiry
+    from app.routers.query import get_redis_client
+    redis = await get_redis_client()
+    token_key = f"gdpr_deletion:{user_id}"
+    await redis.setex(token_key, 900, deletion_token)  # 15 minutes
+
+    logger.warning("admin.gdpr.token_generated", user_id=user_id)
+
+    return {
+        "status": "token_generated",
+        "user_id": user_id,
+        "discord_id": user.discord_id,
+        "deletion_token": deletion_token,
+        "expires_in_seconds": 900,
+        "message": "Use this token with DELETE /admin/users/{user_id}/queries?confirm={token} within 15 minutes",
+    }
+
+
 @router.delete("/users/{user_id}/queries")
 async def gdpr_delete_user_data(
     user_id: str,
@@ -517,17 +557,38 @@ async def gdpr_delete_user_data(
 ):
     """
     GDPR data deletion - permanently delete all user queries and feedback.
-    Requires confirmation token matching user_id.
+
+    Two-step process for safety:
+    1. POST /admin/users/{user_id}/gdpr-deletion-token to get confirmation token
+    2. DELETE /admin/users/{user_id}/queries?confirm={token} to execute deletion
+
     Requires admin token in X-Admin-Token header.
     """
     logger.warning("admin.gdpr.delete_requested", user_id=user_id)
 
-    # Confirmation check
-    if confirm != user_id:
+    # Verify deletion token from Redis
+    from app.routers.query import get_redis_client
+    redis = await get_redis_client()
+    token_key = f"gdpr_deletion:{user_id}"
+    stored_token = await redis.get(token_key)
+
+    if not stored_token:
         raise HTTPException(
             status_code=400,
-            detail="Confirmation mismatch. Pass user_id as 'confirm' query parameter.",
+            detail="No valid deletion token found. Generate token first: POST /admin/users/{user_id}/gdpr-deletion-token",
         )
+
+    # Constant-time comparison
+    import secrets
+    if not secrets.compare_digest(confirm, stored_token):
+        logger.warning("admin.gdpr.invalid_token", user_id=user_id)
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid deletion token",
+        )
+
+    # Delete token so it can't be reused
+    await redis.delete(token_key)
 
     # Get user
     user = await session.get(User, UUID(user_id))
