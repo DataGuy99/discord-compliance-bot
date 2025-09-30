@@ -124,17 +124,35 @@ async def main():
     # Create bot instance
     bot = ComplianceBot()
 
-    # Check API health before starting
+    # Check API health with retries before starting
     logger.info("bot.api.health_check")
-    health = await bot.api_client.health_check()
+    max_retries = 3
+    retry_delay = 5
 
-    if health.get("status") != "healthy":
-        logger.warning(
-            "bot.api.unhealthy",
-            status=health.get("status"),
-            error=health.get("error"),
-        )
-        logger.warning("bot.starting.anyway")
+    for attempt in range(max_retries):
+        health = await bot.api_client.health_check()
+
+        if health.get("status") == "healthy":
+            logger.info("bot.api.healthy")
+            break
+
+        if attempt < max_retries - 1:
+            logger.warning(
+                "bot.api.unhealthy.retrying",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                status=health.get("status"),
+                retry_in=retry_delay,
+            )
+            await asyncio.sleep(retry_delay)
+        else:
+            logger.error(
+                "bot.api.unhealthy.failed",
+                status=health.get("status"),
+                error=health.get("error"),
+            )
+            logger.critical("bot.startup_aborted")
+            sys.exit(1)
 
     # Start bot
     try:

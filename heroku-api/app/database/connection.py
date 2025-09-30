@@ -48,13 +48,26 @@ async_session_factory = async_sessionmaker(
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency for FastAPI routes to get database session.
-    Usage: session: AsyncSession = Depends(get_session)
+
+    Provides automatic transaction management:
+    - Commits on success
+    - Rolls back on SQLAlchemy errors
+    - Always closes session
+
+    Usage:
+        session: AsyncSession = Depends(get_session)
+
+    Raises:
+        SQLAlchemyError: On database errors
     """
+    from sqlalchemy.exc import SQLAlchemyError
+
     async with async_session_factory() as session:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except SQLAlchemyError as e:
+            logger.error("db.transaction_failed", error=str(e))
             await session.rollback()
             raise
         finally:

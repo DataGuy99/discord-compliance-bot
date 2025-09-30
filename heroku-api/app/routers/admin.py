@@ -22,14 +22,27 @@ from app.rag.ingest import ingest_document
 logger = structlog.get_logger()
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-# Admin token from environment
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "changeme-generate-secure-token")
+# Admin token from environment - MUST be set
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+if not ADMIN_TOKEN:
+    logger.critical("admin.token_not_set")
+    raise ValueError("ADMIN_TOKEN environment variable must be set for security")
 
 
 async def verify_admin(x_admin_token: str = Header(...)) -> None:
-    """Verify admin token from header"""
-    if x_admin_token != ADMIN_TOKEN:
-        logger.warning("admin.unauthorized_access_attempt", token_preview=x_admin_token[:8])
+    """
+    Verify admin token from header using constant-time comparison.
+
+    Args:
+        x_admin_token: Admin token from X-Admin-Token header
+
+    Raises:
+        InsufficientPermissionsException: If token is invalid
+    """
+    import secrets
+
+    if not secrets.compare_digest(x_admin_token, ADMIN_TOKEN):
+        logger.warning("admin.unauthorized_access_attempt")
         raise InsufficientPermissionsException(
             message="Invalid admin token",
             required_permission="admin",
@@ -362,9 +375,17 @@ async def get_audit_log(
     Get system audit log with optional event type filter.
     Requires admin token in X-Admin-Token header.
     """
+    from sqlalchemy.orm import selectinload
+
     logger.info("admin.audit_log.requested", limit=limit, event_type=event_type)
 
-    query = select(SystemAuditLog).order_by(desc(SystemAuditLog.timestamp)).limit(limit)
+    # Use selectinload to prevent N+1 queries - eagerly load actor relationship
+    query = (
+        select(SystemAuditLog)
+        .options(selectinload(SystemAuditLog.actor))
+        .order_by(desc(SystemAuditLog.timestamp))
+        .limit(limit)
+    )
 
     if event_type:
         query = query.where(SystemAuditLog.event_type == event_type)
@@ -374,12 +395,8 @@ async def get_audit_log(
 
     audit_list = []
     for log in logs:
-        # Get actor username if actor_id exists
-        actor_username = None
-        if log.actor_id:
-            actor_result = await session.get(User, log.actor_id)
-            if actor_result:
-                actor_username = actor_result.discord_username
+        # Actor is now preloaded, no additional query needed
+        actor_username = log.actor.discord_username if log.actor else None
 
         audit_list.append(AuditLogResponse(
             log_id=str(log.id),

@@ -201,7 +201,7 @@ class ComplianceDocument(Base):
     # Document Identity
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     document_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    version: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     # Content
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -276,6 +276,9 @@ class SystemAuditLog(Base):
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
+
+    # Relationships
+    actor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[actor_id])
 
     # Indexes
     __table_args__ = (

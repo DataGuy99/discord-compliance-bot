@@ -13,5 +13,4 @@ structlog==24.4.0
 # Environment variables
 python-dotenv==1.0.1
 
-# Async utilities
-asyncio==3.4.3
+# Note: asyncio is built into Python 3.7+, no separate package needed

@@ -71,8 +71,9 @@ async def lifespan(app: FastAPI):
 
     # Test database connection
     try:
+        from sqlalchemy import text
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.scalar(text("SELECT 1"))
         logger.info("app.database.connected")
     except Exception as e:
         logger.error("app.database.connection_failed", error=str(e))
@@ -293,7 +294,6 @@ async def root():
         "status": "operational",
         "documentation": "/docs" if ENVIRONMENT != "production" else None,
         "health_check": "/health",
-        "environment": ENVIRONMENT,
     }
 
 

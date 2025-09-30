@@ -9,7 +9,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
@@ -22,8 +22,24 @@ from app.models.exceptions import InvalidQueryException, RateLimitExceededExcept
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1", tags=["queries"])
 
-# In-memory rate limiting (use Redis in production for multi-dyno)
-_rate_limit_cache: dict = {}
+# Redis-based rate limiting for distributed systems
+import redis.asyncio as aioredis
+import os
+
+_redis_client: Optional[aioredis.Redis] = None
+
+
+async def get_redis_client() -> aioredis.Redis:
+    """Get or create Redis client for rate limiting"""
+    global _redis_client
+    if _redis_client is None:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        _redis_client = await aioredis.from_url(
+            redis_url,
+            decode_responses=True,
+            max_connections=10,
+        )
+    return _redis_client
 
 
 class QueryRequest(BaseModel):
@@ -32,9 +48,21 @@ class QueryRequest(BaseModel):
     user_id: str = Field(..., description="Discord user ID")
     session_id: Optional[str] = Field(None, description="Session ID for context")
 
-    @validator("query")
-    def validate_query(cls, v):
-        """Ensure query is meaningful"""
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        """
+        Ensure query is meaningful and properly formatted.
+
+        Args:
+            v: Query string to validate
+
+        Returns:
+            Stripped and validated query string
+
+        Raises:
+            ValueError: If query is empty or too short
+        """
         if not v.strip():
             raise ValueError("Query cannot be empty")
         if len(v.strip().split()) < 3:
@@ -289,27 +317,34 @@ async def get_query_history(
 
 
 async def _check_rate_limit(user_id: str):
-    """Check rate limit (30 req/min per user)"""
-    now = datetime.utcnow()
+    """
+    Check rate limit (30 req/min per user) using Redis.
+
+    Uses Redis INCR with TTL for distributed rate limiting across multiple instances.
+
+    Args:
+        user_id: User identifier for rate limiting
+
+    Raises:
+        RateLimitExceededException: If rate limit is exceeded
+    """
+    redis = await get_redis_client()
     key = f"rate_limit:{user_id}"
 
-    if key not in _rate_limit_cache:
-        _rate_limit_cache[key] = []
+    # Increment counter
+    count = await redis.incr(key)
 
-    # Remove old entries
-    _rate_limit_cache[key] = [
-        ts for ts in _rate_limit_cache[key]
-        if now - ts < timedelta(minutes=1)
-    ]
+    # Set TTL on first request
+    if count == 1:
+        await redis.expire(key, 60)  # 60 seconds window
 
-    if len(_rate_limit_cache[key]) >= 30:
+    if count > 30:
+        ttl = await redis.ttl(key)
         raise RateLimitExceededException(
             message="Rate limit exceeded (30 requests per minute)",
             limit=30,
-            retry_after=60,
+            retry_after=ttl if ttl > 0 else 60,
         )
-
-    _rate_limit_cache[key].append(now)
 
 
 async def _get_or_create_user(session: AsyncSession, discord_id: str) -> User:
