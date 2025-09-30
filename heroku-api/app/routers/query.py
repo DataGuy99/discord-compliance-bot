@@ -362,7 +362,8 @@ async def _check_rate_limit(user_id: str):
     """
     Check rate limit (30 req/min per user) using Redis.
 
-    Uses Redis INCR with TTL for distributed rate limiting across multiple instances.
+    Uses atomic Lua script to prevent race conditions between INCR and EXPIRE.
+    This ensures the TTL is always set correctly even under high concurrency.
 
     Args:
         user_id: User identifier for rate limiting
@@ -373,12 +374,15 @@ async def _check_rate_limit(user_id: str):
     redis = await get_redis_client()
     key = f"rate_limit:{user_id}"
 
-    # Increment counter
-    count = await redis.incr(key)
-
-    # Set TTL on first request
-    if count == 1:
-        await redis.expire(key, 60)  # 60 seconds window
+    # Atomic INCR + EXPIRE using Lua script (prevents race condition)
+    lua_script = """
+    local current = redis.call('incr', KEYS[1])
+    if current == 1 then
+        redis.call('expire', KEYS[1], ARGV[1])
+    end
+    return current
+    """
+    count = await redis.eval(lua_script, 1, key, 60)
 
     if count > 30:
         ttl = await redis.ttl(key)
